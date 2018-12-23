@@ -471,6 +471,7 @@ void turn()
     SetConsoleMode(hin, ENABLE_MOUSE_INPUT | ENABLE_EXTENDED_FLAGS);
 
     if (TRUE == globalArgs.DEBUG) {
+    //if (0) {
         /*
          * For debug
          */
