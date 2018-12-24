@@ -14,6 +14,12 @@ typedef int BOOL;
  * You can define your own struct and variable here
  * 你可以在这里定义你自己的结构体和变量
  */
+ 
+#define NULL 0
+#define MAX(a, b) ((a) >= (b) ? (a) : (b))
+#define MIN(a, b) ((a) <= (b) ? (a) : (b))
+#define HIST_RECORD 3
+
 extern const int DIR[8][2]; 
 typedef struct SmoveNode {
 	struct SmoveNode* preBrother;
@@ -45,9 +51,7 @@ const int MIN = -1000;
 const int LEAF_NODE = 3;
 unsigned int maxMoveNode = 9830400;
 unsigned int countMoveNode = 0;
-#define NULL 0
-#define MAX(a, b) ((a) >= (b) ? (a) : (b))
-#define MIN(a, b) ((a) <= (b) ? (a) : (b))
+struct Command historiesPos[HIST_RECORD];
 
 BOOL isGameoOver(char board[BOARD_SIZE][BOARD_SIZE]);
 /*
@@ -61,10 +65,26 @@ BOOL isGameoOver(char board[BOARD_SIZE][BOARD_SIZE]);
 void initAI(int me)
 {
 	gMeFlag = me;
+	memset(historiesPos, 0, sizeof(historiesPos));
 }
 
 BOOL inBound(int x, int y) {
   return x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE;
+}
+
+void addHistory(struct Command preferedPos) {
+	for (int i = 0; i < HIST_RECORD-1; i++) historiesPos[i] = historiesPos[i+1];
+	historiesPos[HIST_RECORD-1] = preferedPos;
+}
+
+BOOL inHistory(moveNode* move) {
+	for (int i = 0; i < HIST_RECORD; i++) {
+		if (historiesPos[i].x == move->x && historiesPos[i].y == move->y 
+		    && historiesPos[i].option == move->dir) {
+		   	return TRUE;
+		}
+	}
+	return FALSE;
 }
 
 void releaseMoveTreeBack(moveNode* mTree){
@@ -306,6 +326,29 @@ struct Command aiTurn(const char board[BOARD_SIZE][BOARD_SIZE], int me) {
      * TODO：在这里写下你的AI。 
      * 这里有一个示例AI，它只会寻找第一个可下的位置进行落子。 
      */
+    struct Command enemy = {0, 0, 0};
+    struct Command enemyList[10];
+    static unsigned int lastEnemy = 0;
+    
+    int countEnemy = 0;
+    for (int x = 0; x < BOARD_SIZE; x++) {
+    	for (int y = 0; y < BOARD_SIZE; y++) {
+      		if (board[x][y] == 3 - me) {
+      			enemyList[countEnemy].x = x;
+      			enemyList[countEnemy].y = y;
+      			countEnemy++;
+			}
+		}
+	}
+	
+	if (countEnemy > 3) {
+		enemy = enemyList[rand()%countEnemy];
+	}
+	else {
+		enemy = enemyList[lastEnemy++];
+		if (lastEnemy >= countEnemy) lastEnemy = 0;
+	}
+	
     char curBoard[BOARD_SIZE][BOARD_SIZE] = {0};
     moveNode* ValidMoveTree = NULL;
     //struct Command preferedPos = findValidPos(board, me);
@@ -333,10 +376,8 @@ struct Command aiTurn(const char board[BOARD_SIZE][BOARD_SIZE], int me) {
 		}
 		else if (iter->bestScore < bestScore || (iter->bestScore == bestScore && iter->curScore < curScore)) {
 			moveNode* tmp = iter;
-			iter->preBrother->posBrother = iter->posBrother;
-			if (iter->posBrother) {
-				iter->posBrother->preBrother = iter->preBrother;
-			}
+			if (iter->preBrother) iter->preBrother->posBrother = iter->posBrother;
+			if (iter->posBrother) iter->posBrother->preBrother = iter->preBrother;
 			
 			iter = iter->posBrother; 
 			tmp->preBrother = NULL;
@@ -353,39 +394,67 @@ struct Command aiTurn(const char board[BOARD_SIZE][BOARD_SIZE], int me) {
 		struct Command needMove = {0,0,0};
 		moveNode* iter = rootMoveTree;
 		int distance = 0;
+		if (countEnemy == 1) distance = 20; //如果只剩一个，则找距离近的进行攻击 
+		
 		while (iter) {
-			int temp = sqrt(pow(iter->x - 6, 2) + pow(iter->y - 6, 2));
-			if (temp > distance) {
+			if (inHistory(iter)) 
+			{
+				moveNode* tmp = iter;
+				if (iter->preBrother) iter->preBrother->posBrother = iter->posBrother;
+				else rootMoveTree = iter->posBrother;
+				if (iter->posBrother) iter->posBrother->preBrother = iter->preBrother;
+				
+				iter = iter->posBrother; 
+				tmp->preBrother = NULL;
+				tmp->posBrother = NULL;
+				releaseMoveTreeBack(tmp);
+			    continue;	
+			}
+				
+			int temp = sqrt(pow(iter->x - enemy.x, 2) + pow(iter->y - enemy.y, 2));
+			if (countEnemy >= 2 && temp > distance) {
 				distance = temp;
 				needMove.x = iter->x;
 				needMove.y = iter->y; 
 			} 
+			else if (countEnemy == 1 && temp < distance) {
+				distance = temp;
+				needMove.x = iter->x;
+				needMove.y = iter->y; 
+			}
 			iter = iter->posBrother;
 		}
 		
-		int dir = 0;
-		int dir_x = (6 - needMove.x == 0) ? 0 : (6 - needMove.x) / abs(6 - needMove.x); 
-		int dir_y = (6 - needMove.y == 0) ? 0 : (6 - needMove.y) / abs(6 - needMove.y);
+		//int dir = 0;
+		int dir_x = (enemy.x - needMove.x == 0) ? 0 : (enemy.x - needMove.x) / abs(enemy.x - needMove.x); 
+		int dir_y = (enemy.y - needMove.y == 0) ? 0 : (enemy.y - needMove.y) / abs(enemy.y - needMove.y);
 
 		for (int d = 0; d < 8; d++) 
 		{
-			if (DIR[d][0] == dir_x && DIR[d][1] == dir_y) dir = d;
+			if (DIR[d][0] == dir_x && DIR[d][1] == dir_y) needMove.option = d;
 		}
 		
 		iter = rootMoveTree;
 		while (iter) {
-			if (iter->x == needMove.x && iter->y == needMove.y && iter->dir == dir) break;
+			if (iter->x == needMove.x && iter->y == needMove.y && iter->dir == needMove.option) break;
 			iter = iter->posBrother;
 		}
 		
 		if (iter) {
 			preferedPos.x = needMove.x;
 			preferedPos.y = needMove.y;
-			preferedPos.option = dir;
+			preferedPos.option = needMove.option;
+		}
+		else {
+			preferedPos.x = rootMoveTree->x;
+			preferedPos.y = rootMoveTree->y;
+			preferedPos.option = rootMoveTree->dir;
 		}
 	} 
 	
 	releaseMoveTreeBack(rootMoveTree);
+	
+	addHistory(preferedPos);
 	
 	return preferedPos;
 }
