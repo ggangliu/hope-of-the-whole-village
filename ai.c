@@ -179,6 +179,7 @@ NoEnoughMemory:
 	}
 	
 	moveNode* moveTree = NULL;
+	moveNode* moveTreeLast = NULL; 
 	
 	for (int x = 0; x < BOARD_SIZE; x++) {
     	for (int y = 0; y < BOARD_SIZE; y++) {
@@ -202,11 +203,24 @@ NoEnoughMemory:
 		        	nextMove->player = player;
 		        	nextMove->curScore = nextMove->bestScore = 0;
 		        	
-		        	if (NULL != moveTree) {
-		        		nextMove->posBrother = moveTree;
-		        		moveTree->preBrother = nextMove;
+		        	if (BLACK == player) { //黑棋，插入到链表头 
+		        		if (NULL != moveTree) {
+		        			nextMove->posBrother = moveTree;
+		        			moveTree->preBrother = nextMove;
+						}
+						moveTree = nextMove;
 					}
-					moveTree = nextMove;
+					else {  //白棋，插入到链表尾 
+						if (NULL == moveTree) {
+							moveTree = nextMove;
+						}
+						else {
+							moveTreeLast->posBrother = nextMove;
+							nextMove->preBrother = moveTreeLast;
+						}
+						moveTreeLast = nextMove;
+					}
+		        	
 					//printf("x-%d, y-%d, d-%d\n", x, y, i);
 		        }
 			}
@@ -215,7 +229,7 @@ NoEnoughMemory:
 	
 Moving:
 	if (NULL == moveTree) {
-		printf("shit!\n");
+		//printf("shit!\n");
 		goto NoEnoughMemory;
 	}
 	
@@ -329,6 +343,7 @@ struct Command aiTurn(const char board[BOARD_SIZE][BOARD_SIZE], int me) {
     struct Command enemy = {0, 0, 0};
     struct Command enemyList[10];
     static unsigned int lastEnemy = 0;
+    BOOL deadLoop = FALSE;
     
     int countEnemy = 0;
     for (int x = 0; x < BOARD_SIZE; x++) {
@@ -408,16 +423,17 @@ struct Command aiTurn(const char board[BOARD_SIZE][BOARD_SIZE], int me) {
 				tmp->preBrother = NULL;
 				tmp->posBrother = NULL;
 				releaseMoveTreeBack(tmp);
+				deadLoop = TRUE;
 			    continue;	
 			}
 				
 			int temp = sqrt(pow(iter->x - enemy.x, 2) + pow(iter->y - enemy.y, 2));
-			if (countEnemy >= 2 && temp > distance) {
+			if (!deadLoop && countEnemy >= 2 && temp > distance) {
 				distance = temp;
 				needMove.x = iter->x;
 				needMove.y = iter->y; 
 			} 
-			else if (countEnemy == 1 && temp < distance) {
+			else if ((deadLoop || countEnemy == 1) && temp < distance) {
 				distance = temp;
 				needMove.x = iter->x;
 				needMove.y = iter->y; 
